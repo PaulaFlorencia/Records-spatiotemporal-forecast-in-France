@@ -1,0 +1,373 @@
+---
+title: "Estimation avec dépendance V"
+#author: "Paula"
+#date: '2024-08-08'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r }
+# Equation (9) dans l'article
+G_estimator <- function(t, xt, h) {
+  # kernel nonparametric estimator of the CDF G
+  function(x, t0) {
+    Kvect <- K((t - t0) / h)
+    sum(Kvect * (xt <= x)) / sum(Kvect)
+  }
+}
+
+# Equation (8) dans l'article
+Gmax_glissant_estimator <- function(t, Ghat) {
+  # nonparametric estimator of the CDF Gmax until time t-1
+  # where t is our time of interest
+  function(x) {  
+    tmoins1 <- c(1:(t-1))
+    prod(sapply(tmoins1, Ghat, x = x))
+  }
+}
+
+# Equation (11) sans (\tau-1) dans l'article
+V_madogram_func <- function(FiYi.mat,zi.vec){ 
+  zi.vec.inv <- 1/zi.vec
+  wi.vec <- as.numeric(t(apply(zi.vec.inv,2,function(x) x/sum(x))))
+  FiYiwi <- t(t(FiYi.mat)^(1/wi.vec))
+  Mean.FiYiwi<- rowMeans(FiYiwi)
+  Max.FiYiwi<- apply(FiYiwi,1,max)
+  vw.ti <- mean(Max.FiYiwi - Mean.FiYiwi)
+  cw.ti <- mean(wi.vec/(1+wi.vec))
+  Aw.ti <- (vw.ti + cw.ti)/ (1 - vw.ti - cw.ti)
+  sum.wi <- sum(zi.vec^(-1))
+  lambdaV <- sum.wi * Aw.ti
+}
+
+# Kernel
+K <- function(x) { # kernel 
+  3/4 * (1 - x^2) * (abs(x) <= 1)
+}
+
+# même Kernel
+dEpan <- function(x){
+  ## Function of Epanechnikov density distribution
+  k <- (3/4)* (1-x^2)
+  k[-1>x] <- 0
+  k[x>1] <- 0
+  return (k)
+}
+
+# Equation (5) dans l'article
+# GmaxY.estimation.function.step1 : from article2_functions.R
+
+# Equation (7) dans l'article
+# EGmaxY.estimation.function.step2 : from article2_functions.R
+
+```
+
+```{r, echo=TRUE,message=FALSE}
+source("/Users/pgonzale/article2_functions.R")
+```
+
+## Description du code
+
+Pour chaque $\tau=\{2,...,T\}$, on a le vecteur $(\widehat{\lambda}_{\tau}(s_0,s))_{s\in\mathbb{S}}$, de taille $S$ (équation (2) dans l'article), et on cherche $\widehat{\lambda_{\tau}}(s_0)$, où
+
+\[\widehat{\lambda_{\tau}}(s_0) = \widehat{\mathbb{V}}^*_{\tau-1}\left(\dots,\widehat{\lambda}_{\tau}(s_0,s)^{-1},\dots\right)\]
+Le paramètre $\widehat{\lambda_{\tau}}(s_0)$ nous permet de trouver l'estimateur (équation (2) dans l'article)
+\[\widehat{P}_{\tau}(s_0) = (1+\widehat{\lambda_{\tau}}(s_0))^{-1}\]
+
+Ici, $\widehat{\mathbb{V}}^*_{\tau-1}$ est la fonction de dépendance du vecteur $(Z_{\tau-1(s)})_{s\in\mathbb{S}}$ représentant les maxima par site jusqu'au temps précédent ($\tau-1$). i.e, $Z_{\tau-1}(s)=\max_{t\leq\tau-1}{Y_{t}(s)}$, avec ${Y_{t}(s)}$ la variable aléatoire associée au site $s$ et temps $t$. 
+
+Calculer $\widehat{\mathbb{V}}^*_{\tau-1}$ directement est difficile parce qu'on n'a qu'une réalisation du vecteur $(Z_{\tau-1(s)})_{s\in\mathbb{S}}$. Mais sous nos hypothèses, il est possible de représenter  $\widehat{\mathbb{V}}^*_{\tau-1}$ à partir de $\widehat{\mathbb{V}}$, la fonction de dépendance du vecteur $(Y_{t}(s))_{s\in\mathbb{S}}$, pour tout temps $t$.
+
+\[\widehat{\lambda_{\tau}}(s_0) = \sum_{t=1}^{\tau-1}\widehat{\mathbb{V}}\left\{\dots,\widehat{\lambda}_{t}^{*}(s,s)\times\widehat{\lambda}_{\tau}(s_0,s)^{-1},\dots\right\} \]
+
+On a déjà $\widehat{\lambda}_{\tau}(s_0,s)$ (équation (6) dans l'article), mais on n'a pas encore les $\widehat{\lambda}_{t}^{*}(s,s)$. Ces derniers sont appelés $\lambda_{t,s}$ dans le document de Julien et peuvent être trouvés en utilisant 
+
+\[\widehat{\lambda}_{t}^{*}(s,s)=\frac{1 - E[\widehat{G}_{t}^{(s)}(Y_{t}(s))]}{E[\widehat{G}_{t}^{(s)}(Y_{t}(s))]},\]
+
+où l'espérance est estimée en utilisant l' équation (6) de l'article. \textcolor{red}{A la différence de $\lambda_{\tau}(s_0,s)$, ici $Y_{\tau-1(s)}$ et $\max_{t\leq\tau-1}Y_{t}(s)$ ne sont pas indépendantes (même temps $\tau-1$), dans ce cas cette étape n'est pas correcte? si ceci n'est pas correct, les $\widehat{\lambda}_{t}^{*}(s,s)$ dans la suite ne sont pas les bons.}
+
+
+En supposant que nous avons déjà la fonction $\widehat{\mathbb{V}}$ et les paramètres $\lambda_t^{*}(s,s)$, pour chaque $t\leq T-1$ et $s\in\mathbb{S}$, il faut pour chaque pas de temps $\tau$ :
+
+1. Faire la multiplication entre la matrice $(\lambda_{t}^{*}(s,s))_{t\leq\tau-1,s\in\mathbb{S}}$ ($S$ colonnes et $\tau-1$ lignes) et le vecteur $(\lambda_{\tau}(s_0,s)^{-1})_{s\in\mathbb{S}}$. Le résultat est une matrice $\bar{\mathbf{v}}_{s_0}$ de $(\tau-1)$ lignes et $S$ colonnes. 
+
+2. On applique la fonction $\widehat{\mathbb{V}}$ (équation (11) dans l'article, mais sans $\times\,\tau-1$) à chaque ligne de $\bar{\mathbf{v}}_{s_0}$.i.e, $\widehat{\mathbb{V}}(\bar{\mathbf{v}}_{s_0}[t,])$ et on obtient une valeur.
+
+3. Puis on somme les $\tau-1$ valeurs, $\widehat{\lambda}_{\tau}(s_0) = \sum_{t\leq\tau-1}\widehat{\mathbb{V}}(\bar{\mathbf{v}}_{s_0}[t,])$ et on trouve la probabilité de record $\widehat{P}_{\tau}(s_0) = (1+\widehat{\lambda_{\tau}}(s_0))^{-1}$.
+
+4. Répéter pour chaque $\tau=\{2,...,T\}$.
+
+## Code
+
+On télécharge les observations à partir de l'un des fichiers south_observations.rds, britany_observations.rds ou paris_observations.rds et on choisi le site $s_0$ défini dans l'article (Salon de Provence, Brest, Paris-Montsouris)
+
+```{r }
+obs_mat <- readRDS("/Users/pgonzale/paris_observations.rds") 
+s0 <- 1 # site d'interet
+if (colnames(obs_mat)[1]=="Ile de Groix"){s0 <- 3}
+```
+
+```{r }
+nbtimesteps <- dim(obs_mat)[1]
+timesteps <- seq(1,nbtimesteps,by=1)
+nbsites <- dim(obs_mat)[2]
+h2 <- rep(35,nbsites)
+h1 <- rep(35,nbsites)
+```
+
+La région d'étude a  `r toString(nbsites)` sites, chaque site a  `r toString(nbtimesteps)` années de registre. 
+
+```{r }
+Gmaxhat.mat <- matrix(NA,ncol=nbsites,nrow=nbtimesteps)
+for (i in 1: nbsites){ # pour chaque site
+  Ghats <- G_estimator(timesteps, obs_mat[,i], h1[i])
+  for (j in 1: nbtimesteps){ # pours chaue temps
+    Gmaxhat_ti.func <- Gmax_glissant_estimator(t = (j+1),Ghats)
+    Gmaxhat <- Gmaxhat_ti.func(obs_mat[j,i]) 
+    Gmaxhat.mat[j,i] <- Gmaxhat
+  }
+}
+
+EGmaxhat.mat <- matrix(NA, ncol=dim(Gmaxhat.mat)[2],nrow=dim(Gmaxhat.mat)[1])
+for (i in 1:dim(Gmaxhat.mat)[2]){
+  Kij <- outer(timesteps,timesteps,function(zz,z) dEpan((zz - z) / h2[i])) 
+  W <- Kij / rowSums(Kij)
+  EGmaxhat.mat[,i] <- W %*% as.numeric(Gmaxhat.mat[,i])
+}
+lam_t.s <- (1-EGmaxhat.mat)/EGmaxhat.mat
+
+```
+
+`lam_t.s` : matrice de `nbsites` colonnes et `nbtimesteps` lignes qui contient $\widehat{\lambda}_{t}^{*}(s,s)$.
+
+```{r }
+TT <- nbtimesteps -1
+S <- nbsites
+GmaxHatY.s0 <- GmaxY.estimation.function.step1(obs_mat, bandwidth = h1[1])$Array.GmaxHatY
+E.GmaxY.s0 <- EGmaxY.estimation.function.step2(GmaxHatY.s0, bandwidth = h2[1])$Array.EGmaxHatY
+Pstat_so_j <- as.matrix(E.GmaxY.s0[,,s0])
+lambdastat_so_j <- (1 - Pstat_so_j)/Pstat_so_j
+```
+
+`lambdastat_so_j` : vecteur de `TT` lignes et `nbsites` colonnes qui contient $\widehat{\lambda}_{\tau}(s_0,s)$, avec $\tau=\{2,...,`r toString(TT)`\}$ et $s\in\mathbb{S}$
+
+```{r }
+LamV_T <- rep(NA,TT)
+FjYj <- GiYi.func(Data = obs_mat, h = h1[1])
+```
+
+`FjYj` :  Estimation de $F_{t}^{(s)}(Y_{t}(s))$ où  $F_{t}^{(s)}$ est la fonction de répartition de $Y_{t}(s)$, ingrédient principal pour l'estimation de la fonction de dépendance $\widehat{\mathbb{V}}$. `FjYj` est une matrice de `r toString(nbtimesteps)` lignes et `r toString(nbsites)` colonnes.
+
+```{r }
+for (i in 1:dim(lambdastat_so_j)[1]){ # pour chaque temps d'evaluation
+  if (i==1){
+    inputV_t.s <- t(as.matrix((lam_t.s[1:i,])*(1/lambdastat_so_j[i,])))
+  }
+  if(i>1){
+    inputV_t.s <- t(t(lam_t.s[1:i,])*(1/lambdastat_so_j[i,])) 
+  }
+  sum_Vt <- 0
+  for (ti in 1:i){
+    zi.vec <- as.matrix((inputV_t.s[ti,]))
+    #wi.vec <- as.numeric(t(apply(zi.vec,2, function(x) x/sum(x))))
+    Vt <- V_madogram_func(FjYj, zi.vec)
+    sum_Vt <- sum_Vt + Vt 
+    LamV_T[i] <- sum_Vt
+  }
+}
+pV_T <- 1/(1+LamV_T)
+```
+
+Pour chaque pas de temps $\tau$ où on veut estimer $P_{\tau}(s_0)$, on utilise les $\tau-1$ premières lignes de `lam_t.s` et on multiple par le vecteur 1/`lambdastat_so_j`. On appelle la matrice résultante `inputV_t.s`, matrice de $(\tau-1)$ lignes et $S$ colonnes. Pour chaque ligne $t$ (appelée $\bar{\mathbf{v}}_{s_0}[t,]$ en haut) on utilise la fonction `V_madogram_func` (définie en haut) pour obtenir l'estimateur $\widehat{\mathbb{V}}(\bar{\mathbf{v}}_{s_0}[t,])$ (le résultat est une valeur), puis on obtient $\widehat{\lambda}_{\tau}(s_0)$ comme la somme de ces $\tau-1$ valeurs, puis on calcule la probabilité de record $\widehat{P}_{\tau}(s_0) = (1+ \widehat{\lambda}_{\tau}(s_0))^{-1}$.
+
+Dans ce code, la variable `LamV_T` contient le vecteur $(\widehat{\lambda}_{\tau}(s_0))_{2\leq\tau\leq T}$ et la variable `pV_T` contient le vecteur $(\widehat{P}_{\tau}(s_0))_{2\leq\tau\leq T}$. 
+
+```{r }
+lam.iid <- S*c(1:TT)
+p.iid <- 1/(1+lam.iid)
+
+plotaxis.vec <- c(1,seq(10,50,10),(nbtimesteps)-1)
+par(mfrow=c(1,1),mar=c(5,5.5,4,2)) 
+plot(1:TT,pV_T, type='l',col='green',lwd=2,
+     ylab=TeX(r'($\widehat{P}_{\tau}(s_0)$)'),
+     main=TeX(r'($\widehat{P}_{\tau}(s_0)\,vs\,year$)'),
+     xlab='year',xaxt = "n",
+     ylim=range(pV_T,p.iid),
+     cex.lab=1.2)
+lines(1:TT,1/(1+(S*c(1:TT))),col='black',lwd=2)
+axis(1, at= plotaxis.vec, labels= plotaxis.vec + (1960),cex.axis=1.2)
+legend('topright',
+       legend=c(TeX(r'($\widehat{P}_{\tau}(s_0)$)'),TeX(r'($P_{iid}$)')),
+       col=c("green","black"),
+       lty= 1,lwd=5, bg="transparent",cex=1.3)
+
+```
+
+Si les séries temporelles étaient stationnaires, le ratio `lam.iid`/`LamV_T` devrait être constant.
+```{r }
+par(mfrow=c(1,1),mar=c(5,5.5,5,2))
+plot(1:TT,LamV_T/lam.iid,col='Green',type='l',
+     lwd=2,
+     main=TeX(r'($\widehat{\lambda}_{\tau}(s_0)\times (S*(\tau-1))^{-1}\,vs\, \tau $)'),
+     xlab='year',xaxt = "n",cex.lab=1.2,
+     ylab=TeX(r'($\widehat{\lambda}_{\tau}(s_0)\times (S*(\tau-1))^{-1}$)'))
+axis(1, at= plotaxis.vec, labels= plotaxis.vec + (1960),cex.axis=1.3)
+
+
+
+```
+
+```{r echo=FALSE,,fig.align = 'center'}
+obs_mat <- readRDS("/Users/pgonzale/britany_observations.rds") 
+s0 <- 1 # site d'interet
+if (colnames(obs_mat)[1]=="Ile de Groix"){s0 <- 3}
+nbtimesteps <- dim(obs_mat)[1]
+timesteps <- seq(1,nbtimesteps,by=1)
+nbsites <- dim(obs_mat)[2]
+h2 <- rep(35,nbsites)
+h1 <- rep(35,nbsites)
+Gmaxhat.mat <- matrix(NA,ncol=nbsites,nrow=nbtimesteps)
+for (i in 1: nbsites){ # pour chaque site
+  Ghats <- G_estimator(timesteps, obs_mat[,i], h1[i])
+  for (j in 1: nbtimesteps){ # pours chaue temps
+    Gmaxhat_ti.func <- Gmax_glissant_estimator(t = (j+1),Ghats)
+    Gmaxhat <- Gmaxhat_ti.func(obs_mat[j,i]) 
+    Gmaxhat.mat[j,i] <- Gmaxhat
+  }
+}
+
+EGmaxhat.mat <- matrix(NA, ncol=dim(Gmaxhat.mat)[2],nrow=dim(Gmaxhat.mat)[1])
+for (i in 1:dim(Gmaxhat.mat)[2]){
+  Kij <- outer(timesteps,timesteps,function(zz,z) dEpan((zz - z) / h2[i])) 
+  W <- Kij / rowSums(Kij)
+  EGmaxhat.mat[,i] <- W %*% as.numeric(Gmaxhat.mat[,i])
+}
+lam_t.s <- (1-EGmaxhat.mat)/EGmaxhat.mat
+TT <- nbtimesteps -1
+S <- nbsites
+GmaxHatY.s0 <- GmaxY.estimation.function.step1(obs_mat, bandwidth = h1[1])$Array.GmaxHatY
+E.GmaxY.s0 <- EGmaxY.estimation.function.step2(GmaxHatY.s0, bandwidth = h2[1])$Array.EGmaxHatY
+Pstat_so_j <- as.matrix(E.GmaxY.s0[,,s0])
+lambdastat_so_j <- (1 - Pstat_so_j)/Pstat_so_j
+LamV_T <- rep(NA,TT)
+FjYj <- GiYi.func(Data = obs_mat, h = h1[1])
+for (i in 1:dim(lambdastat_so_j)[1]){ # pour chaque temps d'evaluation
+  if (i==1){
+    inputV_t.s <- t(as.matrix((lam_t.s[1:i,])*(1/lambdastat_so_j[i,])))
+  }
+  if(i>1){
+    inputV_t.s <- t(t(lam_t.s[1:i,])*(1/lambdastat_so_j[i,])) 
+  }
+  sum_Vt <- 0
+  for (ti in 1:i){
+    zi.vec <- as.matrix((inputV_t.s[ti,]))
+    #wi.vec <- as.numeric(t(apply(zi.vec,2, function(x) x/sum(x))))
+    Vt <- V_madogram_func(FjYj, zi.vec)
+    sum_Vt <- sum_Vt + Vt 
+    LamV_T[i] <- sum_Vt
+  }
+}
+pV_T <- 1/(1+LamV_T)
+
+lam.iid <- S*c(1:TT)
+p.iid <- 1/(1+lam.iid)
+par(mfrow=c(1,1),mar=c(5,5.5,5,2))
+plotaxis.vec <- c(1,seq(10,50,10),(nbtimesteps)-1)
+plot(1:TT,pV_T, type='l',col='blue',lwd=2,
+     ylab=TeX(r'($\widehat{P}_{\tau}(s_0)$)'),
+     main=TeX(r'($\widehat{P}_{\tau}(s_0)\,vs\,year$)'),
+     xlab='year',xaxt = "n",
+     ylim=range(pV_T,p.iid),
+     cex.lab=1.2)
+lines(1:TT,1/(1+(S*c(1:TT))),col='black',lwd=2)
+axis(1, at= plotaxis.vec, labels= plotaxis.vec + (1960),cex.axis=1.2)
+legend('topright',
+       legend=c(TeX(r'($\widehat{P}_{\tau}(s_0)$)'),TeX(r'($P_{iid}$)')),
+       col=c("blue","black"),
+       lty= 1,lwd=5, bg="transparent",cex=1.3)
+par(mfrow=c(1,1),mar=c(5,5.5,5,2))
+plot(1:TT,LamV_T/lam.iid,col='blue',type='l',
+     lwd=2, main=TeX(r'($\widehat{\lambda}_{\tau}(s_0)\times (S*(\tau-1))^{-1}\,vs\, \tau $)'),
+     xlab='year',xaxt = "n",cex.lab=1.2,
+     ylab=TeX(r'($\widehat{\lambda}_{\tau}(s_0)\times (S*(\tau-1))^{-1}$)'))
+axis(1, at= plotaxis.vec, labels= plotaxis.vec + (1960),cex.axis=1.3)
+```
+
+```{r echo=FALSE,,fig.align = 'center'}
+obs_mat <- readRDS("/Users/pgonzale/south_observations.rds") 
+s0 <- 1 # site d'interet
+if (colnames(obs_mat)[1]=="Ile de Groix"){s0 <- 3}
+nbtimesteps <- dim(obs_mat)[1]
+timesteps <- seq(1,nbtimesteps,by=1)
+nbsites <- dim(obs_mat)[2]
+h2 <- rep(35,nbsites)
+h1 <- rep(35,nbsites)
+Gmaxhat.mat <- matrix(NA,ncol=nbsites,nrow=nbtimesteps)
+for (i in 1: nbsites){ # pour chaque site
+  Ghats <- G_estimator(timesteps, obs_mat[,i], h1[i])
+  for (j in 1: nbtimesteps){ # pours chaue temps
+    Gmaxhat_ti.func <- Gmax_glissant_estimator(t = (j+1),Ghats)
+    Gmaxhat <- Gmaxhat_ti.func(obs_mat[j,i]) 
+    Gmaxhat.mat[j,i] <- Gmaxhat
+  }
+}
+
+EGmaxhat.mat <- matrix(NA, ncol=dim(Gmaxhat.mat)[2],nrow=dim(Gmaxhat.mat)[1])
+for (i in 1:dim(Gmaxhat.mat)[2]){
+  Kij <- outer(timesteps,timesteps,function(zz,z) dEpan((zz - z) / h2[i])) 
+  W <- Kij / rowSums(Kij)
+  EGmaxhat.mat[,i] <- W %*% as.numeric(Gmaxhat.mat[,i])
+}
+lam_t.s <- (1-EGmaxhat.mat)/EGmaxhat.mat
+TT <- nbtimesteps -1
+S <- nbsites
+GmaxHatY.s0 <- GmaxY.estimation.function.step1(obs_mat, bandwidth = h1[1])$Array.GmaxHatY
+E.GmaxY.s0 <- EGmaxY.estimation.function.step2(GmaxHatY.s0, bandwidth = h2[1])$Array.EGmaxHatY
+Pstat_so_j <- as.matrix(E.GmaxY.s0[,,s0])
+lambdastat_so_j <- (1 - Pstat_so_j)/Pstat_so_j
+LamV_T <- rep(NA,TT)
+FjYj <- GiYi.func(Data = obs_mat, h = h1[1])
+for (i in 1:dim(lambdastat_so_j)[1]){ # pour chaque temps d'evaluation
+  if (i==1){
+    inputV_t.s <- t(as.matrix((lam_t.s[1:i,])*(1/lambdastat_so_j[i,])))
+  }
+  if(i>1){
+    inputV_t.s <- t(t(lam_t.s[1:i,])*(1/lambdastat_so_j[i,])) 
+  }
+  sum_Vt <- 0
+  for (ti in 1:i){
+    zi.vec <- as.matrix((inputV_t.s[ti,]))
+    #wi.vec <- as.numeric(t(apply(zi.vec,2, function(x) x/sum(x))))
+    Vt <- V_madogram_func(FjYj, zi.vec)
+    sum_Vt <- sum_Vt + Vt 
+    LamV_T[i] <- sum_Vt
+  }
+}
+pV_T <- 1/(1+LamV_T)
+
+plotaxis.vec <- c(1,seq(10,50,10),(nbtimesteps)-1)
+par(mfrow=c(1,1),mar=c(5,5.5,5,2))
+plot(1:TT,pV_T, type='l',col='red',lwd=2,
+     ylab=TeX(r'($\widehat{P}_{\tau}(s_0)$)'),
+     main=TeX(r'($\widehat{P}_{\tau}(s_0)\,vs\,year$)'),
+     xlab='year',xaxt = "n",
+     ylim=range(pV_T,p.iid),
+     cex.lab=1.2)
+lines(1:TT,1/(1+(S*c(1:TT))),col='black',lwd=2)
+axis(1, at= plotaxis.vec, labels= plotaxis.vec + (1960),cex.axis=1.2)
+legend('topright',
+       legend=c(TeX(r'($\widehat{P}_{\tau}(s_0)$)'),TeX(r'($P_{iid}$)')),
+       col=c("red","black"),
+       lty= 1,lwd=5, bg="transparent",cex=1.3)
+par(mfrow=c(1,1),mar=c(5,5.5,5,2))
+plot(1:TT,LamV_T/lam.iid,col='red',type='l',
+     lwd=2, main=TeX(r'($\widehat{\lambda}_{\tau}(s_0)\times (S*(\tau-1))^{-1}\,vs\, \tau $)'),
+     xlab='year',xaxt = "n",cex.lab=1.2,
+     ylab=TeX(r'($\widehat{\lambda}_{\tau}(s_0)\times (S*(\tau-1))^{-1}$)'))
+axis(1, at= plotaxis.vec, labels= plotaxis.vec + (1960),cex.axis=1.3)
+lam.iid <- S*c(1:TT)
+p.iid <- 1/(1+lam.iid)
+```
