@@ -1,0 +1,339 @@
+---
+title: "Estimation avec dépendance V avec strategie c)"
+#author: "Paula"
+#date: '2024-08-08'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r }
+# Equation (9) dans l'article
+G_estimator <- function(t, xt, h) {
+  # kernel nonparametric estimator of the CDF G
+  function(x, t0) {
+    Kvect <- K((t - t0) / h)
+    sum(Kvect * (xt <= x)) / sum(Kvect)
+  }
+}
+
+# Equation (11) sans (\tau-1) dans l'article
+V_madogram_func <- function(FiYi.mat,wi.vec){ 
+  FiYiwi <- t(t(FiYi.mat)^(1/wi.vec))
+  Mean.FiYiwi<- rowMeans(FiYiwi)
+  Max.FiYiwi<- apply(FiYiwi,1,max)
+  vw.ti <- mean(Max.FiYiwi - Mean.FiYiwi)
+  cw.ti <- mean(wi.vec/(1+wi.vec))
+  Aw.ti <- (vw.ti + cw.ti)/ (1 - vw.ti - cw.ti)
+  sum.wi <- sum(wi.vec^(-1)) 
+  lambdaV <- sum.wi * Aw.ti
+}
+
+# Kernel
+K <- function(x) { # kernel 
+  3/4 * (1 - x^2) * (abs(x) <= 1)
+}
+
+# même Kernel
+dEpan <- function(x){
+  ## Function of Epanechnikov density distribution
+  k <- (3/4)* (1-x^2)
+  k[-1>x] <- 0
+  k[x>1] <- 0
+  return (k)
+}
+
+
+# Equation (5) dans l'article
+# GmaxY.estimation.function.step1 : from article2_functions.R
+
+# Equation (7) dans l'article
+# EGmaxY.estimation.function.step2 : from article2_functions.R
+
+```
+
+```{r, echo=TRUE,message=FALSE}
+source("/Users/pgonzale/article2_functions.R")
+```
+
+## Description du code
+
+Pour chaque $\tau=\{2,...,T\}$,on cherche $v_{\tau}(s_0)$, nous permetant de trouver notre probabilité d'interet 
+
+\begin{equation}
+P_{\tau}(s_0) = (1+v_{\tau}(s_0))^{-1}
+\end{equation}
+
+où
+
+\begin{equation}
+v_{\tau}(s_0) = \sum_{t=1}^{\tau-1}\mathbb{V}\left\{\dots,\left(\frac{\sigma_{\tau(s_0)}}{\sigma_t(s)}\right)^{1/\xi},\dots\right\} 
+\end{equation}
+
+
+Ici, $\mathbb{V}(.)$ est la fonction de dépendence du vecteur de dimention $S$, $(Y_{t}(s))_{s\in\mathbb{S}}$. $\mathbb{V}(.)$ est stationnaire dans le temps. $\sigma_{t}(s)$ est le parametre d'échelle de $Y_t(s)$ et $\sigma_{\tau}(s_0)$ est le parametre d'échelle du $Y_{\tau}(s_0)$.
+
+$Y_t(s)$ et $Y_{\tau}(s_0)$ son indepenantes. On peut trouver une expression pour $\left(\frac{\sigma_{\tau(s_0)}}{\sigma_t(s)}\right)^{1/\xi}$ en fonction de $F_{t}^{(s)}(Y_{\tau}(s_0))$, où $F_{t}^{(s)}$ est la fonction de repartition de $Y_{t}(s)$.
+
+\begin{equation}
+F_{t}^{(s)}(Y_{\tau}(s_0)) \sim Beta\left(\alpha=\left(\frac{\sigma_{\tau(s_0)}}{\sigma_t(s)}\right)^{1/\xi},\beta=1\right)
+\end{equation}
+
+Ainsi 
+
+\begin{equation}
+v_{\tau,t}^{(s_0,s)} = \left(\frac{\sigma_{\tau(s_0)}}{\sigma_t(s)}\right)^{1/\xi}=\frac{\mathbb{E}[F_{t}^{(s)}(Y_{\tau}(s_0))]}{1 - \mathbb{E}[F_{t}^{(s)}(Y_{\tau}(s_0))]}
+\end{equation}
+
+En supposant que nous avons déjà un estimateur de la fonction $\widehat{\mathbb{V}}$. Ce code n'est pas optimisé, on va repeter à chaque fois les étapes suivantes
+
+\begin{itemize}
+  \item[I.] pour un site donné $s\in\mathbb{S}$ on estime est fonctions de repartition $\mathbf{F}^{(s)}(.)=\left\{F_{1}^{(s)}(.),F_{2}^{(s)}(.),\dots,F_{T-1}^{(s)}(.)\right\}$ avec le lissage par kernel (de $t=1$ à $t=T$), Equation (9) dans l'article.
+  \bigskip
+  
+  \item[II.] On calcule $T-1$ vecteurs de dimention $S$, en applicant $\mathbf{F}^{(s)}(.)$ sur caque un des $T-1$ vecteurs $(Y_t(s))_{s\in\mathbb{S}}$. briques de base du madogram. Equation (12) dans l'article.
+  \bigskip
+  
+\end{itemize}
+
+\textbf{Première boucle for:} on define quelle est variable $Y_{\tau}(s_0)$. Pour chaque temps d'évaluation $\tau=2,\dots,T$. \textbf{Deuxième boucle for:} Pour chaque site $s\in\mathbb{S}$, on define quelle est la suite $\mathbf{F}^{(s)}(.)$ de fonctions qu'on va utiliser.
+
+Puis
+
+\begin{enumerate}
+  \item Evalution les $T$ (et pas les $\tau$-1 premières) fonctions de $\mathbf{F}^{(s)}(.)$ sur $Y_{\tau}(s_0)$. On dénote ce vectrur $\mathbf{F}\left(Y_{\tau}(s_0)\right)$
+  \bigskip
+  
+  \item Lissage de $\mathbf{F}\left(Y_{\tau}(s_0)\right)$ lissage par kernel (de $t=1$ à $t=T-1$) pour estimer $\mathbb{E}\left[\mathbf{F}^{(s)}\left(Y_{\tau}(s_0)\right)\right]=\left\{\mathbb{E}\left[F_{1}^{(s)}(Y_{\tau}(s_0))\right],\dots,\mathbb{E}\left[F_{T-1}^{(s)}(Y_{\tau}(s_0))\right]\right\}$ 
+  \bigskip
+  
+  \item On utilise les $\tau-1$ premiers elements de $\mathbb{E}\left[\mathbf{F}^{(s)}\left(Y_{\tau}(s_0)\right)\right]$ et l'equation (4) de ce document pour obtenir $\left(v_{\tau,t}^{(s_0,s)}\right)_{t<\tau}$
+  \bigskip
+  
+  \item[*]la première boucle finit
+  
+  \item En sortant de la première boucle ou aura une matrice $\mathbf{v}_{\tau}(s_0)$de $\tau-1$ lignes et $S$ colonnes, contentat les $v_{\tau,t}^{(s_0,s)}$ necessaires pour estimer $v_{\tau}(s_0)$ (équation (2)).
+  \bigskip
+  
+  \item on applique la function madogram sur chaque une des $\tau-1$ lignes de la matrice $\mathbf{v}_{\tau}(s_0)$. Puis on somme les $\tau-1$ valeurs obtenus et on obtient $v_{\tau}(s_0)$. (La fonction madogram utilise les $T_1$ vecteurs de l'étape II. en haut de ce document )
+  \bigskip
+  
+  \item on trouve la probabilité de record $P_{\tau}(s_0) = (1+v_{\tau}(s_0))^{-1}$
+  \bigskip
+  
+  \item[*] Les étapes suivantes sont répetées pour chaque temps $\tau=2,...,T$
+  \bigskip
+  
+\end{enumerate}
+
+
+## Code
+
+On télécharge les observations à partir de l'un des fichiers south_observations.rds, britany_observations.rds ou paris_observations.rds et on choisi le site $s_0$ défini dans l'article (Salon de Provence, Brest, Paris-Montsouris)
+
+```{r }
+obs_mat <- readRDS("/Users/pgonzale/paris_observations.rds") 
+s0 <- 1 # site d'interet
+if (colnames(obs_mat)[1]=="Ile de Groix"){s0 <- 3}
+```
+
+```{r }
+nbtimesteps <- dim(obs_mat)[1]
+nbtausteps <- nbtimesteps-1
+timesteps <- seq(1,nbtimesteps,by=1)
+nbsites <- dim(obs_mat)[2]
+h2 <- rep(25,nbsites)
+h1 <- rep(25,nbsites)
+```
+
+La région d'étude a  `r toString(nbsites)` sites, chaque site a  `r toString(nbtimesteps)` années de registre. 
+
+```{r }
+Kij <- outer(timesteps,timesteps,function(zz,z) dEpan((zz - z) / h2[1]))
+W <- Kij / rowSums(Kij)
+FYs0.tau_list <- vector(mode='list', length=(nbtimesteps-1))
+EFYs0.tau_list <- vector(mode='list', length=(nbtimesteps-1))
+for (tau in 2:nbtimesteps){ # Boucle 1
+  taumoins1 <- tau-1
+  taumoins1.seq <- c(1:(tau-1))
+  FYs0.tau <- matrix(NA,ncol=nbsites,nrow=tau)
+  EFYs0.tau <- matrix(NA,ncol=nbsites,nrow=(tau-1))
+  for (s in 1:nbsites){ # Boucle 2
+    Ft_func <- G_estimator(timesteps, obs_mat[,s], h1[s]) # Étape I.
+    FYs0s.tau <- sapply(timesteps, Ft_func, x = obs_mat[tau,s0])
+    EFYs0s.tau <- W %*% as.numeric(FYs0s.tau)
+    EFYs0.tau[,s] <- as.numeric(EFYs0s.tau[taumoins1.seq,])
+  }
+  FYs0.tau_list[[(taumoins1)]] <- FYs0s.tau # Étape 1.
+  EFYs0.tau_list[[(taumoins1)]] <- EFYs0.tau # Étape 2.
+}
+```
+
+
+```{r }
+FjYj <- GiYi.func(Data = obs_mat, h = h1[1]) # Étape II.
+```
+
+```{r }
+LamV.tau_vec <- rep(NA,(nbtausteps))
+for (tau in 2:nbtimesteps){
+  taumoins1 <- tau-1
+  taumoins1.seq <- c(1:(tau-1)) # Étape 3.
+  E.tau_mat <- as.matrix(EFYs0.tau_list[[taumoins1]])
+  v.tau_mat <- E.tau_mat/(1-E.tau_mat) # Étape 4
+  z.tau_mat <- (1-E.tau_mat)/E.tau_mat
+  sum_Vtau <- 0
+  for (ti in 1:taumoins1){ # Étape 5.
+    v.tauti_vec <- as.matrix(v.tau_mat[ti,])
+    z.tauti_vec <- as.matrix(z.tau_mat[ti,])
+    w.tauti_vec <- as.numeric(t(apply(z.tauti_vec,2, function(x) x/sum(x))))
+    Vtau <- V_madogram_func(FjYj, w.tauti_vec)
+    sum_Vtau <- sum_Vtau + Vtau 
+    LamV.tau_vec[taumoins1] <- sum_Vtau
+  }
+}
+P.s0_vec <- 1/(1+LamV.tau_vec) # Étape 6.
+```
+
+```{r }
+par(mfrow=c(1,1),mar=c(5,5,4,2))
+plot(1:nbtausteps,P.s0_vec, type='l',col='green',lwd=2, main="Record probability",ylab=TeX(r'($\widehat{P}_{t}(s_o)$)'), xlab="years")
+lines(1:nbtausteps,1/(1+(nbsites*c(1:nbtausteps))),col='black',lwd=2)
+
+par(mfrow=c(1,1),mar=c(5,5,4,2))
+plot(1:nbtausteps,LamV.tau_vec/(nbsites*c(1:nbtausteps)),col='green',type='l',lwd=2, main=TeX(r'($\widehat{v}_{\tau}(s_0)/v_{iid}$)'),
+     ylab= TeX(r'($\widehat{v}_{\tau}(s_0)/v_{iid}$)'),
+     xlab="years")
+```
+
+
+
+
+
+
+
+
+
+```{r echo=FALSE,,fig.align = 'center'}
+obs_mat <- readRDS("/Users/pgonzale/south_observations.rds") 
+s0 <- 1 # site d'interet
+if (colnames(obs_mat)[1]=="Ile de Groix"){s0 <- 3}
+
+nbtimesteps <- dim(obs_mat)[1]
+nbtausteps <- nbtimesteps-1
+timesteps <- seq(1,nbtimesteps,by=1)
+nbsites <- dim(obs_mat)[2]
+h2 <- rep(15,nbsites)
+h1 <- rep(40,nbsites)
+
+Kij <- outer(timesteps,timesteps,function(zz,z) dEpan((zz - z) / h2[1]))
+W <- Kij / rowSums(Kij)
+FYs0.tau_list <- vector(mode='list', length=(nbtimesteps-1))
+EFYs0.tau_list <- vector(mode='list', length=(nbtimesteps-1))
+for (tau in 2:nbtimesteps){ # Boucle 1
+  taumoins1 <- tau-1
+  taumoins1.seq <- c(1:(tau-1))
+  FYs0.tau <- matrix(NA,ncol=nbsites,nrow=tau)
+  EFYs0.tau <- matrix(NA,ncol=nbsites,nrow=(tau-1))
+  for (s in 1:nbsites){ # Boucle 2
+    Ft_func <- G_estimator(timesteps, obs_mat[,s], h1[s]) # Étape I.
+    FYs0s.tau <- sapply(timesteps, Ft_func, x = obs_mat[tau,s0])
+    EFYs0s.tau <- W %*% as.numeric(FYs0s.tau)
+    EFYs0.tau[,s] <- as.numeric(EFYs0s.tau[taumoins1.seq,])
+  }
+  FYs0.tau_list[[(taumoins1)]] <- FYs0s.tau # Étape 1.
+  EFYs0.tau_list[[(taumoins1)]] <- EFYs0.tau # Étape 2.
+}
+
+FjYj <- GiYi.func(Data = obs_mat, h = h1[1]) # Étape II.
+
+LamV.tau_vec <- rep(NA,(nbtausteps))
+for (tau in 2:nbtimesteps){
+  taumoins1 <- tau-1
+  taumoins1.seq <- c(1:(tau-1)) # Étape 3.
+  E.tau_mat <- as.matrix(EFYs0.tau_list[[taumoins1]])
+  v.tau_mat <- E.tau_mat/(1-E.tau_mat) # Étape 4
+  z.tau_mat <- (1-E.tau_mat)/E.tau_mat
+  sum_Vtau <- 0
+  for (ti in 1:taumoins1){ # Étape 5.
+    v.tauti_vec <- as.matrix(v.tau_mat[ti,])
+    z.tauti_vec <- as.matrix(z.tau_mat[ti,])
+    w.tauti_vec <- as.numeric(t(apply(z.tauti_vec,2, function(x) x/sum(x))))
+    Vtau <- V_madogram_func(FjYj, w.tauti_vec)
+    sum_Vtau <- sum_Vtau + Vtau 
+    LamV.tau_vec[taumoins1] <- sum_Vtau
+  }
+}
+P.s0_vec <- 1/(1+LamV.tau_vec) # Étape 6.
+
+par(mfrow=c(1,1),mar=c(5,5,4,2))
+plot(1:nbtausteps,P.s0_vec, type='l',col='red',lwd=2, main="Record probability",ylab=TeX(r'($\widehat{P}_{t}(s_o)$)'), xlab="years")
+lines(1:nbtausteps,1/(1+(nbsites*c(1:nbtausteps))),col='black',lwd=2)
+
+par(mfrow=c(1,1),mar=c(5,5,4,2))
+plot(1:nbtausteps,LamV.tau_vec/(nbsites*c(1:nbtausteps)),col='red',type='l',lwd=2, main=TeX(r'($\widehat{v}_{\tau}(s_0)/v_{iid}$)'),ylab= TeX(r'($\widehat{v}_{\tau}(s_0)/v_{iid}$)'),
+     xlab="years")
+```
+
+```{r echo=FALSE,,fig.align = 'center'}
+obs_mat <- readRDS("/Users/pgonzale/britany_observations.rds") 
+s0 <- 1 # site d'interet
+if (colnames(obs_mat)[1]=="Ile de Groix"){s0 <- 3}
+
+nbtimesteps <- dim(obs_mat)[1]
+nbtausteps <- nbtimesteps-1
+timesteps <- seq(1,nbtimesteps,by=1)
+nbsites <- dim(obs_mat)[2]
+h2 <- rep(15,nbsites)
+h1 <- rep(40,nbsites)
+
+Kij <- outer(timesteps,timesteps,function(zz,z) dEpan((zz - z) / h2[1]))
+W <- Kij / rowSums(Kij)
+FYs0.tau_list <- vector(mode='list', length=(nbtimesteps-1))
+EFYs0.tau_list <- vector(mode='list', length=(nbtimesteps-1))
+for (tau in 2:nbtimesteps){ # Boucle 1
+  taumoins1 <- tau-1
+  taumoins1.seq <- c(1:(tau-1))
+  FYs0.tau <- matrix(NA,ncol=nbsites,nrow=tau)
+  EFYs0.tau <- matrix(NA,ncol=nbsites,nrow=(tau-1))
+  for (s in 1:nbsites){ # Boucle 2
+    Ft_func <- G_estimator(timesteps, obs_mat[,s], h1[s]) # Étape I.
+    FYs0s.tau <- sapply(timesteps, Ft_func, x = obs_mat[tau,s0])
+    EFYs0s.tau <- W %*% as.numeric(FYs0s.tau)
+    EFYs0.tau[,s] <- as.numeric(EFYs0s.tau[taumoins1.seq,])
+  }
+  FYs0.tau_list[[(taumoins1)]] <- FYs0s.tau # Étape 1.
+  EFYs0.tau_list[[(taumoins1)]] <- EFYs0.tau # Étape 2.
+}
+
+FjYj <- GiYi.func(Data = obs_mat, h = h1[1]) # Étape II.
+
+LamV.tau_vec <- rep(NA,(nbtausteps))
+for (tau in 2:nbtimesteps){
+  taumoins1 <- tau-1
+  taumoins1.seq <- c(1:(tau-1)) # Étape 3.
+  E.tau_mat <- as.matrix(EFYs0.tau_list[[taumoins1]])
+  v.tau_mat <- E.tau_mat/(1-E.tau_mat) # Étape 4
+  z.tau_mat <- (1-E.tau_mat)/E.tau_mat
+  sum_Vtau <- 0
+  for (ti in 1:taumoins1){ # Étape 5.
+    v.tauti_vec <- as.matrix(v.tau_mat[ti,])
+    z.tauti_vec <- as.matrix(z.tau_mat[ti,])
+    w.tauti_vec <- as.numeric(t(apply(z.tauti_vec,2, function(x) x/sum(x))))
+    Vtau <- V_madogram_func(FjYj, w.tauti_vec)
+    sum_Vtau <- sum_Vtau + Vtau 
+    LamV.tau_vec[taumoins1] <- sum_Vtau
+  }
+}
+P.s0_vec <- 1/(1+LamV.tau_vec) # Étape 6.
+
+par(mfrow=c(1,1),mar=c(5,5,4,2))
+plot(1:nbtausteps,P.s0_vec, type='l',col='blue',lwd=2, main="Record probability",ylab=TeX(r'($\widehat{P}_{t}(s_o)$)'), xlab="years")
+lines(1:nbtausteps,1/(1+(nbsites*c(1:nbtausteps))),col='black',lwd=2)
+
+par(mfrow=c(1,1),mar=c(5,5,4,2))
+plot(1:nbtausteps,LamV.tau_vec/(nbsites*c(1:nbtausteps)),col='blue',type='l',lwd=2, main=TeX(r'($\widehat{v}_{\tau}(s_0)/v_{iid}$)'),ylab= TeX(r'($\widehat{v}_{\tau}(s_0)/v_{iid}$)'),
+     xlab="years")
+```
